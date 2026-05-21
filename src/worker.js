@@ -14,10 +14,17 @@
 // Cloudflare Worker: 优选IP订阅生成器（自动解析 DNS + 强制保留 SNI）
 // 支持 vmess, vless, trojan, hysteria2, shadowsocks
 
+// Cloudflare Worker: 优选IP订阅生成器（智能回退 + 自动DNS解析）
+// 支持 vmess, vless, trojan, hysteria2, shadowsocks
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' },
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'GET,POST,OPTIONS',
+    },
   });
 }
 function text(body, status = 200, contentType = 'text/plain; charset=utf-8') {
@@ -27,7 +34,7 @@ function b64EncodeUtf8(str) { return btoa(unescape(encodeURIComponent(str))); }
 function b64DecodeUtf8(str) { return decodeURIComponent(escape(atob(str))); }
 function escapeYaml(s) { return JSON.stringify(String(s)); }
 
-// ---------- DNS 解析 ----------
+// ---------- DNS 解析（通过 Cloudflare DNS over HTTPS）----------
 async function resolveDomainToIPs(domain) {
   if (!domain) return [];
   try {
@@ -100,7 +107,7 @@ function parseRawLinks(input) {
   return result;
 }
 
-// ---------- 节点重建（强制保留 SNI） ----------
+// ---------- 节点重建（强制保留 SNI，智能回退）----------
 function buildNodes(baseNodes, endpoints, opts) {
   const keepHost = opts.keepOriginalHost !== false;
   const prefix = (opts.namePrefix || '').trim();
@@ -253,10 +260,11 @@ async function buildDedupHash(body) {
   }));
 }
 
-// ---------- 核心 API ----------
+// ---------- 核心 API（智能回退） ----------
 async function handleGenerate(request, env, url) {
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: 'JSON 无效' }, 400); }
+
   try {
     let baseNodes = parseRawLinks(body.nodeLinks || '');
     if (!baseNodes.length) throw new Error('没有识别到可用节点');
@@ -264,21 +272,29 @@ async function handleGenerate(request, env, url) {
     let preferredIpsText = (body.preferredIps || '').trim();
     let endpoints = parsePreferredEndpoints(preferredIpsText);
     let autoResolved = false;
+    const warnings = [];
 
-    // 自动解析域名 IP
+    // 智能回退：如果用户没有提供 IP 或提供的列表无效，则自动处理
     if (endpoints.length === 0 && baseNodes.length > 0) {
       const firstNode = baseNodes[0];
       const domain = firstNode.originalServer || firstNode.server;
       if (domain) {
         const ips = await resolveDomainToIPs(domain);
-        if (ips.length) {
+        if (ips.length === 1) {
+          // 只解析出一个 IP，说明未使用 CDN，回退使用域名
+          warnings.push(`域名 ${domain} 仅解析到单一 IP (${ips[0]})，疑似未使用 CDN。已自动使用原始域名代替 IP 替换，以确保连通性。`);
+          endpoints = [{ server: domain, port: undefined, remark: 'original' }];
+        } else if (ips.length > 1) {
           endpoints = ips.map(ip => ({ server: ip, port: undefined, remark: 'auto' }));
           autoResolved = true;
+          warnings.push(`已自动从域名 ${domain} 解析出 ${ips.length} 个优选 IP，如部分无法使用请手动测试。`);
         } else {
-          endpoints = [{ server: domain, port: undefined, remark: 'origin' }];
+          endpoints = [{ server: domain, port: undefined, remark: 'fallback' }];
+          warnings.push(`DNS 解析失败，已回退使用原始域名。`);
         }
       }
     }
+
     if (endpoints.length === 0) throw new Error('没有可用优选地址');
 
     const options = { namePrefix: body.namePrefix || '', keepOriginalHost: body.keepOriginalHost !== false };
@@ -298,12 +314,11 @@ async function handleGenerate(request, env, url) {
     const base = `${url.origin}/sub/${id}`;
     const t = (target) => `${base}${target ? `?target=${target}` : ''}${token ? `&token=${encodeURIComponent(token)}` : ''}`.replace('?&', '?');
 
-    const warnings = [];
     if (!token) warnings.push('未设置 SUB_ACCESS_TOKEN，订阅链接无保护');
-    if (autoResolved) warnings.push(`未提供优选 IP，已自动从节点域名解析出 ${endpoints.length} 个 IP，如仍无法使用请手动填写正确 CDN IP。`);
 
     return json({
-      ok: true, shortId: id,
+      ok: true,
+      shortId: id,
       urls: { auto: t(''), raw: t('raw'), clash: t('clash'), surge: t('surge') },
       counts: { inputNodes: baseNodes.length, preferredEndpoints: endpoints.length, outputNodes: nodes.length },
       preview: nodes.slice(0, 20).map(n => ({ name: n.name, type: n.type, server: n.server, port: n.port, host: n.host || '', sni: n.sni || '' })),
