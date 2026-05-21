@@ -4,10 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>优选IP订阅生成器</title>
-    <meta
-      name="description"
-      content="将自建 vmess/vless/trojan 节点批量替换为优选 IP，并导出 Clash、V2rayN、Shadowrocket、Surge 可用订阅链接。"
-    />
+<meta name="description" content="将自建 vmess/vless/trojan/hysteria2/shadowsocks 节点批量替换为优选 IP，并导出 Clash、V2rayN、Shadowrocket、Surge 可用订阅链接。" />
     <link rel="icon" href="/icons/auto.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -39,10 +36,10 @@
               id="nodeLinks"
               name="nodeLinks"
               rows="10"
-              placeholder="支持 vmess://、vless://、trojan://，一行一个。也支持直接粘贴原始 base64 订阅内容。"
+              placeholder="支持 vmess://、vless://、trojan://、hysteria2://、ss://，一行一个。也支持直接粘贴原始 base64 订阅内容。"
               required
             ></textarea>
-            <p class="hint">重点兼容自建 VMess / VLESS / Trojan 的 WS + TLS 常见写法。</p>
+            <p class="hint">重点兼容自建 VMess / VLESS / Trojan / Hysteria2 / Shadowsocks 的常见写法。</p>
           </div>
 
           <div>
