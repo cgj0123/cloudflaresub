@@ -27,9 +27,8 @@ const demoIps = [
 ].join('\n');
 
 fillDemoBtn.addEventListener('click', () => {
-  document.getElementById('nodeLinks').value = hysteria2://myuser:pass@example.com:443?insecure=0&sni=hy.example.com#HY2-Demo
-ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNzd29yZA==@example.com:8388#SS-Demo`;;
-  document.getElementById('preferredIps').value = demoIps;
+  document.getElementById('nodeLinks').value = `vmess://ewogICJ2IjogIjIiLAogICJwcyI6ICJkZW1vLXdzLXRscyIsCiAgImFkZCI6ICJlZGdlLmV4YW1wbGUuY29tIiwKICAicG9ydCI6ICI0NDMiLAogICJpZCI6ICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLAogICJzY3kiOiAiYXV0byIsCiAgIm5ldCI6ICJ3cyIsCiAgInRscyI6ICJ0bHMiLAogICJwYXRoIjogIi93cyIsCiAgImhvc3QiOiAiZWRnZS5leGFtcGxlLmNvbSIsCiAgInNuaSI6ICJlZGdlLmV4YW1wbGUuY29tIgp9CgpoeXN0ZXJpYTI6Ly8xMjM0NTpAbXlwYXNzd29yZEBleGFtcGxlLmNvbTo0NDM/c25pPWV4YW1wbGUuY29tJmluc2VjdXJlPTEjSFlJMi1UZXN0CnNzOi8vWVd4dllYUnpJamx0WTJ4cGJtY2dhRzkwY2lCaFoyVWdlWEJsSUdGa2JXbHVaejVqYjIwPSNAVGVzdFNTCg==`;
+  document.getElementById('preferredIps').value = `104.16.1.2#HK-01\n104.17.2.3:2053#US-Edge\ncdn.cloudflare.com#GLOBAL`;
   document.getElementById('namePrefix').value = 'CF';
   document.getElementById('keepOriginalHost').checked = true;
 });
