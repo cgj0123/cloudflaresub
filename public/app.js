@@ -16,19 +16,13 @@ const qrCanvas = document.getElementById('qrCanvas');
 const qrText = document.getElementById('qrText');
 const closeQrModal = document.getElementById('closeQrModal');
 
-const demoVmess = [
-  'vmess://ewogICJ2IjogIjIiLAogICJwcyI6ICJkZW1vLXdzLXRscyIsCiAgImFkZCI6ICJlZGdlLmV4YW1wbGUuY29tIiwKICAicG9ydCI6ICI0NDMiLAogICJpZCI6ICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLAogICJzY3kiOiAiYXV0byIsCiAgIm5ldCI6ICJ3cyIsCiAgInRscyI6ICJ0bHMiLAogICJwYXRoIjogIi93cyIsCiAgImhvc3QiOiAiZWRnZS5leGFtcGxlLmNvbSIsCiAgInNuaSI6ICJlZGdlLmV4YW1wbGUuY29tIiwKICAiZnAiOiAiY2hyb21lIiwKICAiYWxwbiI6ICJoMixodHRwLzEuMSIKfQ=='
-].join('\n');
-
-const demoIps = [
-  '104.16.1.2#HK-01',
-  '104.17.2.3#HK-02',
-  '104.18.3.4:2053#US-Edge'
-].join('\n');
+// 演示数据：包含 vmess, hysteria2, ss 等协议
+const demoVmess = `vmess://ewogICJ2IjogIjIiLAogICJwcyI6ICJkZW1vLXdzLXRscyIsCiAgImFkZCI6ICJlZGdlLmV4YW1wbGUuY29tIiwKICAicG9ydCI6ICI0NDMiLAogICJpZCI6ICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLAogICJzY3kiOiAiYXV0byIsCiAgIm5ldCI6ICJ3cyIsCiAgInRscyI6ICJ0bHMiLAogICJwYXRoIjogIi93cyIsCiAgImhvc3QiOiAiZWRnZS5leGFtcGxlLmNvbSIsCiAgInNuaSI6ICJlZGdlLmV4YW1wbGUuY29tIgp9CgpoeXN0ZXJpYTI6Ly8xMjM0NTpAbXlwYXNzd29yZEBleGFtcGxlLmNvbTo0NDM/c25pPWV4YW1wbGUuY29tJmluc2VjdXJlPTEjSFlJMi1UZXN0CnNzOi8vWVd4dllYUnpJamx0WTJ4cGJtY2dhRzkwY2lCaFoyVWdlWEJsSUdGa2JXbHVaejVqYjIwPSNAVGVzdFNTCg==`;
+const demoIps = `104.16.1.2#HK-01\n104.17.2.3#HK-02\n104.18.3.4:2053#US-Edge`;
 
 fillDemoBtn.addEventListener('click', () => {
-  document.getElementById('nodeLinks').value = `vmess://ewogICJ2IjogIjIiLAogICJwcyI6ICJkZW1vLXdzLXRscyIsCiAgImFkZCI6ICJlZGdlLmV4YW1wbGUuY29tIiwKICAicG9ydCI6ICI0NDMiLAogICJpZCI6ICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLAogICJzY3kiOiAiYXV0byIsCiAgIm5ldCI6ICJ3cyIsCiAgInRscyI6ICJ0bHMiLAogICJwYXRoIjogIi93cyIsCiAgImhvc3QiOiAiZWRnZS5leGFtcGxlLmNvbSIsCiAgInNuaSI6ICJlZGdlLmV4YW1wbGUuY29tIgp9CgpoeXN0ZXJpYTI6Ly8xMjM0NTpAbXlwYXNzd29yZEBleGFtcGxlLmNvbTo0NDM/c25pPWV4YW1wbGUuY29tJmluc2VjdXJlPTEjSFlJMi1UZXN0CnNzOi8vWVd4dllYUnpJamx0WTJ4cGJtY2dhRzkwY2lCaFoyVWdlWEJsSUdGa2JXbHVaejVqYjIwPSNAVGVzdFNTCg==`;
-  document.getElementById('preferredIps').value = `104.16.1.2#HK-01\n104.17.2.3:2053#US-Edge\ncdn.cloudflare.com#GLOBAL`;
+  document.getElementById('nodeLinks').value = demoVmess;
+  document.getElementById('preferredIps').value = demoIps;
   document.getElementById('namePrefix').value = 'CF';
   document.getElementById('keepOriginalHost').checked = true;
 });
@@ -84,7 +78,8 @@ form.addEventListener('submit', async (event) => {
             <td>${escapeHtml(String(item.port))}</td>
             <td>${escapeHtml(item.host || '-')}</td>
             <td>${escapeHtml(item.sni || '-')}</td>
-          </tr>`,
+          </tr>
+        `,
       )
       .join('');
 
