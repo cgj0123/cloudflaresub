@@ -27,7 +27,8 @@ const demoIps = [
 ].join('\n');
 
 fillDemoBtn.addEventListener('click', () => {
-  document.getElementById('nodeLinks').value = demoVmess;
+  document.getElementById('nodeLinks').value = hysteria2://myuser:pass@example.com:443?insecure=0&sni=hy.example.com#HY2-Demo
+ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNzd29yZA==@example.com:8388#SS-Demo`;;
   document.getElementById('preferredIps').value = demoIps;
   document.getElementById('namePrefix').value = 'CF';
   document.getElementById('keepOriginalHost').checked = true;
