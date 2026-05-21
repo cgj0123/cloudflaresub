@@ -3,7 +3,7 @@ const textDecoder = new TextDecoder();
 
 const DEFAULT_TEST_URL = 'http://cp.cloudflare.com/generate_204';
 
-export const SUPPORTED_PROTOCOLS = ['vmess', 'vless', 'trojan'];
+export const SUPPORTED_PROTOCOLS = ['vmess', 'vless', 'trojan', 'hysteria2', 'ss'];
 
 export function normalizeText(value = '') {
   return String(value).replace(/\r\n?/g, '\n').trim();
