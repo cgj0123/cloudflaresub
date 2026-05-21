@@ -11,106 +11,62 @@
 // Cloudflare Worker: 优选IP订阅生成器（支持自动提取 IP）
 // Supports: vmess, vless, trojan, hysteria2, shadowsocks
 
-// ========== 辅助函数 ==========
+// Cloudflare Worker: 优选IP订阅生成器（自动解析 DNS + 强制保留 SNI）
+// 支持 vmess, vless, trojan, hysteria2, shadowsocks
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,OPTIONS',
-    },
+    headers: { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' },
   });
 }
-
 function text(body, status = 200, contentType = 'text/plain; charset=utf-8') {
   return new Response(body, { status, headers: { 'content-type': contentType, 'access-control-allow-origin': '*' } });
 }
+function b64EncodeUtf8(str) { return btoa(unescape(encodeURIComponent(str))); }
+function b64DecodeUtf8(str) { return decodeURIComponent(escape(atob(str))); }
+function escapeYaml(s) { return JSON.stringify(String(s)); }
 
-function b64EncodeUtf8(str) {
-  return btoa(unescape(encodeURIComponent(str)));
-}
-
-function b64DecodeUtf8(str) {
-  return decodeURIComponent(escape(atob(str)));
-}
-
-function escapeYaml(s) {
-  return JSON.stringify(String(s));
-}
-
-// ========== DNS 解析（通过 Cloudflare DNS over HTTPS） ==========
+// ---------- DNS 解析 ----------
 async function resolveDomainToIPs(domain) {
   if (!domain) return [];
   try {
     const url = `https://cloudflare-dns.com/dns-query?name=${domain}&type=A`;
     const resp = await fetch(url, { headers: { 'Accept': 'application/dns-json' } });
     const data = await resp.json();
-    if (data.Answer) {
-      return data.Answer.filter(r => r.type === 1).map(r => r.data);
-    }
-  } catch (e) {
-    console.error(`DNS 解析失败: ${domain}`, e);
-  }
+    if (data.Answer) return data.Answer.filter(r => r.type === 1).map(r => r.data);
+  } catch (e) { console.error(e); }
   return [];
 }
 
-// ========== 优选 IP 解析（支持 # 备注） ==========
 function parsePreferredEndpoints(input) {
-  const lines = String(input || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  return lines.map(line => {
+  return String(input || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(line => {
     const [raw, remark = ''] = line.split('#');
     const match = raw.trim().match(/^(.*?)(?::(\d+))?$/);
-    return {
-      server: match?.[1] || raw,
-      port: match?.[2] ? Number(match[2]) : undefined,
-      remark: remark.trim(),
-    };
+    return { server: match?.[1] || raw, port: match?.[2] ? Number(match[2]) : undefined, remark: remark.trim() };
   });
 }
 
-// ========== 节点解析器 ==========
+// ---------- 节点解析器 ----------
 function parseVmess(link) {
   const obj = JSON.parse(b64DecodeUtf8(link.slice(8)));
-  return {
-    type: 'vmess', name: obj.ps || 'vmess', server: obj.add, port: Number(obj.port || 443),
-    uuid: obj.id, cipher: obj.scy || 'auto', network: obj.net || 'ws', tls: obj.tls === 'tls',
-    host: obj.host || '', path: obj.path || '/', sni: obj.sni || obj.host || '', alpn: obj.alpn || '', fp: obj.fp || '',
-    originalServer: obj.add,
-  };
+  return { type: 'vmess', name: obj.ps || 'vmess', server: obj.add, port: Number(obj.port || 443), uuid: obj.id, cipher: obj.scy || 'auto', network: obj.net || 'ws', tls: obj.tls === 'tls', host: obj.host || '', path: obj.path || '/', sni: obj.sni || obj.host || '', alpn: obj.alpn || '', fp: obj.fp || '', originalServer: obj.add };
 }
-
 function parseUrlLike(link, type) {
   const u = new URL(link);
-  const base = {
-    type, name: decodeURIComponent(u.hash.slice(1)) || type, server: u.hostname, port: Number(u.port || 443),
-    network: u.searchParams.get('type') || 'tcp',
-    tls: (u.searchParams.get('security') || '').toLowerCase() === 'tls',
-    host: u.searchParams.get('host') || '', path: u.searchParams.get('path') || '/',
-    sni: u.searchParams.get('sni') || '', alpn: u.searchParams.get('alpn') || '', fp: u.searchParams.get('fp') || '',
-    originalServer: u.hostname,
-  };
+  const base = { type, name: decodeURIComponent(u.hash.slice(1)) || type, server: u.hostname, port: Number(u.port || 443), network: u.searchParams.get('type') || 'tcp', tls: (u.searchParams.get('security') || '').toLowerCase() === 'tls', host: u.searchParams.get('host') || '', path: u.searchParams.get('path') || '/', sni: u.searchParams.get('sni') || '', alpn: u.searchParams.get('alpn') || '', fp: u.searchParams.get('fp') || '', originalServer: u.hostname };
   if (type === 'trojan') base.password = decodeURIComponent(u.username);
   if (type === 'vless') base.uuid = decodeURIComponent(u.username);
   return base;
 }
-
 function parseHysteria2(link) {
   const u = new URL(link);
   let auth = '';
   if (u.username) auth = u.password ? `${u.username}:${u.password}` : u.username;
-  return {
-    type: 'hysteria2', name: decodeURIComponent(u.hash.slice(1)) || 'hysteria2',
-    server: u.hostname, port: Number(u.port || 443), auth,
-    sni: u.searchParams.get('sni') || '', insecure: u.searchParams.get('insecure') === '1',
-    alpn: u.searchParams.get('alpn') || '', path: u.searchParams.get('path') || '', obfs: u.searchParams.get('obfs') || '',
-    tls: true, network: 'udp', originalServer: u.hostname,
-  };
+  return { type: 'hysteria2', name: decodeURIComponent(u.hash.slice(1)) || 'hysteria2', server: u.hostname, port: Number(u.port || 443), auth, sni: u.searchParams.get('sni') || '', insecure: u.searchParams.get('insecure') === '1', alpn: u.searchParams.get('alpn') || '', path: u.searchParams.get('path') || '', obfs: u.searchParams.get('obfs') || '', tls: true, network: 'udp', originalServer: u.hostname };
 }
-
 function parseShadowsocks(link) {
-  let content = link.slice(5).trim();
-  let name = '';
+  let content = link.slice(5).trim(), name = '';
   const hash = content.indexOf('#');
   if (hash !== -1) { name = decodeURIComponent(content.slice(hash + 1)); content = content.slice(0, hash); }
   let method, password, server, port;
@@ -128,7 +84,6 @@ function parseShadowsocks(link) {
   }
   return { type: 'ss', name: name || 'ss', server, port, method, password, plugin: '', originalServer: server };
 }
-
 function parseRawLinks(input) {
   const lines = String(input || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const result = [];
@@ -139,17 +94,13 @@ function parseRawLinks(input) {
     else if (line.startsWith('hysteria2://')) result.push(parseHysteria2(line));
     else if (line.startsWith('ss://')) result.push(parseShadowsocks(line));
     else {
-      try {
-        const decoded = b64DecodeUtf8(line);
-        if (/^(vmess|vless|trojan|hysteria2|ss):\/\//.test(decoded))
-          result.push(...parseRawLinks(decoded));
-      } catch {}
+      try { const decoded = b64DecodeUtf8(line); if (/^(vmess|vless|trojan|hysteria2|ss):\/\//.test(decoded)) result.push(...parseRawLinks(decoded)); } catch {}
     }
   }
   return result;
 }
 
-// ========== 节点重建（强制保留 SNI/Host） ==========
+// ---------- 节点重建（强制保留 SNI） ----------
 function buildNodes(baseNodes, endpoints, opts) {
   const keepHost = opts.keepOriginalHost !== false;
   const prefix = (opts.namePrefix || '').trim();
@@ -161,21 +112,13 @@ function buildNodes(baseNodes, endpoints, opts) {
       const nameParts = [node.name];
       if (prefix) nameParts.push(prefix);
       nameParts.push(ep.remark || String(idx));
-      const newNode = {
-        ...node,
-        name: nameParts.join(' | '),
-        server: ep.server,
-        port: ep.port || node.port,
-      };
-      // 强制保留原始 SNI/Host，避免 TLS 错误
+      const newNode = { ...node, name: nameParts.join(' | '), server: ep.server, port: ep.port || node.port };
       if (keepHost) {
         if (node.type === 'vmess' || node.type === 'vless' || node.type === 'trojan') {
           newNode.host = node.host || '';
           newNode.sni = node.sni || node.originalServer || '';
         }
-        if (node.type === 'hysteria2') {
-          newNode.sni = node.sni || node.originalServer || '';
-        }
+        if (node.type === 'hysteria2') newNode.sni = node.sni || node.originalServer || '';
       }
       output.push(newNode);
     }
@@ -183,16 +126,11 @@ function buildNodes(baseNodes, endpoints, opts) {
   return output;
 }
 
-// ========== 编码器（生成链接） ==========
+// ---------- 编码器 ----------
 function encodeVmess(n) {
-  const obj = {
-    v: '2', ps: n.name, add: n.server, port: String(n.port), id: n.uuid, aid: '0',
-    scy: n.cipher || 'auto', net: n.network || 'ws', type: 'none', host: n.host || '',
-    path: n.path || '/', tls: n.tls ? 'tls' : '', sni: n.sni || '', alpn: n.alpn || '', fp: n.fp || '',
-  };
+  const obj = { v: '2', ps: n.name, add: n.server, port: String(n.port), id: n.uuid, aid: '0', scy: n.cipher || 'auto', net: n.network || 'ws', type: 'none', host: n.host || '', path: n.path || '/', tls: n.tls ? 'tls' : '', sni: n.sni || '', alpn: n.alpn || '', fp: n.fp || '' };
   return 'vmess://' + b64EncodeUtf8(JSON.stringify(obj));
 }
-
 function encodeVless(n) {
   const u = new URL(`vless://${encodeURIComponent(n.uuid)}@${n.server}:${n.port}`);
   u.searchParams.set('type', n.network || 'ws');
@@ -204,7 +142,6 @@ function encodeVless(n) {
   u.hash = n.name;
   return u.toString();
 }
-
 function encodeTrojan(n) {
   const u = new URL(`trojan://${encodeURIComponent(n.password)}@${n.server}:${n.port}`);
   if (n.network) u.searchParams.set('type', n.network);
@@ -215,7 +152,6 @@ function encodeTrojan(n) {
   u.hash = n.name;
   return u.toString();
 }
-
 function encodeHysteria2(n) {
   let authPart = n.auth ? `${n.auth}@` : '';
   const u = new URL(`hysteria2://${authPart}${n.server}:${n.port}`);
@@ -226,13 +162,12 @@ function encodeHysteria2(n) {
   u.hash = n.name;
   return u.toString();
 }
-
 function encodeShadowsocks(n) {
   const auth = `${n.method}:${n.password}`;
   return `ss://${b64EncodeUtf8(auth)}@${n.server}:${n.port}#${encodeURIComponent(n.name)}`;
 }
 
-// ========== 订阅渲染 ==========
+// ---------- 订阅渲染 ----------
 function renderRaw(nodes) {
   const lines = nodes.map(n => {
     if (n.type === 'vmess') return encodeVmess(n);
@@ -244,7 +179,6 @@ function renderRaw(nodes) {
   }).filter(Boolean);
   return b64EncodeUtf8(lines.join('\n'));
 }
-
 function renderClash(nodes) {
   const lines = [];
   for (const n of nodes) {
@@ -257,9 +191,7 @@ function renderClash(nodes) {
     if (['vmess', 'vless', 'trojan'].includes(n.type)) {
       if (n.tls) base.push(`    tls: true`);
       if (n.sni) base.push(`    servername: ${escapeYaml(n.sni)}`);
-      if (n.network === 'ws') {
-        base.push(`    network: ws`, `    ws-opts:`, `      path: ${escapeYaml(n.path || '/')}`, `      headers:`, `        Host: ${escapeYaml(n.host || n.sni || '')}`);
-      }
+      if (n.network === 'ws') base.push(`    network: ws`, `    ws-opts:`, `      path: ${escapeYaml(n.path || '/')}`, `      headers:`, `        Host: ${escapeYaml(n.host || n.sni || '')}`);
     }
     if (n.type === 'hysteria2') {
       if (n.sni) base.push(`    sni: ${escapeYaml(n.sni)}`);
@@ -277,7 +209,6 @@ function renderClash(nodes) {
     `rules:`, `  - MATCH,节点选择`,
   ].join('\n');
 }
-
 function renderSurge(nodes, baseUrl, token) {
   const proxies = nodes.filter(n => ['vmess', 'trojan', 'hysteria2', 'ss'].includes(n.type)).map(n => {
     const name = n.name.replace(/[ ,]/g, '_');
@@ -296,7 +227,7 @@ function renderSurge(nodes, baseUrl, token) {
   ].join('\n');
 }
 
-// ========== KV 辅助 ==========
+// ---------- KV 辅助 ----------
 function createShortId(len = 10) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
   let id = '';
@@ -304,7 +235,6 @@ function createShortId(len = 10) {
   for (let i = 0; i < len; i++) id += chars[bytes[i] % chars.length];
   return id;
 }
-
 async function createUniqueShortId(env, tries = 8) {
   for (let i = 0; i < tries; i++) {
     const id = createShortId(10);
@@ -312,7 +242,6 @@ async function createUniqueShortId(env, tries = 8) {
   }
   throw new Error('无法生成短链接');
 }
-
 function normalizeLines(v) { return String(v).split(/\r?\n/).map(l => l.trim()).filter(Boolean).sort().join('\n'); }
 async function sha256Hex(s) { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''); }
 async function buildDedupHash(body) {
@@ -324,19 +253,19 @@ async function buildDedupHash(body) {
   }));
 }
 
-// ========== 核心生成 API（带自动解析优选 IP） ==========
+// ---------- 核心 API ----------
 async function handleGenerate(request, env, url) {
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: 'JSON 无效' }, 400); }
-
   try {
     let baseNodes = parseRawLinks(body.nodeLinks || '');
-    if (!baseNodes.length) throw new Error('没有识别到任何可用节点（支持 vmess/vless/trojan/hysteria2/ss）');
+    if (!baseNodes.length) throw new Error('没有识别到可用节点');
 
     let preferredIpsText = (body.preferredIps || '').trim();
     let endpoints = parsePreferredEndpoints(preferredIpsText);
+    let autoResolved = false;
 
-    // 如果没有提供优选 IP，自动从第一个节点的原始域名解析 IP
+    // 自动解析域名 IP
     if (endpoints.length === 0 && baseNodes.length > 0) {
       const firstNode = baseNodes[0];
       const domain = firstNode.originalServer || firstNode.server;
@@ -344,21 +273,17 @@ async function handleGenerate(request, env, url) {
         const ips = await resolveDomainToIPs(domain);
         if (ips.length) {
           endpoints = ips.map(ip => ({ server: ip, port: undefined, remark: 'auto' }));
+          autoResolved = true;
         } else {
-          // 解析失败时降级：直接使用原始域名作为优选地址（此时效果等于不替换）
           endpoints = [{ server: domain, port: undefined, remark: 'origin' }];
         }
       }
     }
+    if (endpoints.length === 0) throw new Error('没有可用优选地址');
 
-    if (endpoints.length === 0) throw new Error('没有可用优选地址，请手动填写或检查网络');
-
-    const options = {
-      namePrefix: body.namePrefix || '',
-      keepOriginalHost: body.keepOriginalHost !== false,
-    };
+    const options = { namePrefix: body.namePrefix || '', keepOriginalHost: body.keepOriginalHost !== false };
     const nodes = buildNodes(baseNodes, endpoints, options);
-    if (!nodes.length) throw new Error('节点组合后为空');
+    if (!nodes.length) throw new Error('节点组合为空');
 
     const payload = { version: 1, createdAt: new Date().toISOString(), nodes };
     const hash = await buildDedupHash(body);
@@ -373,29 +298,16 @@ async function handleGenerate(request, env, url) {
     const base = `${url.origin}/sub/${id}`;
     const t = (target) => `${base}${target ? `?target=${target}` : ''}${token ? `&token=${encodeURIComponent(token)}` : ''}`.replace('?&', '?');
 
+    const warnings = [];
+    if (!token) warnings.push('未设置 SUB_ACCESS_TOKEN，订阅链接无保护');
+    if (autoResolved) warnings.push(`未提供优选 IP，已自动从节点域名解析出 ${endpoints.length} 个 IP，如仍无法使用请手动填写正确 CDN IP。`);
+
     return json({
-      ok: true,
-      shortId: id,
-      urls: {
-        auto: t(''),
-        raw: t('raw'),
-        clash: t('clash'),
-        surge: t('surge'),
-      },
-      counts: {
-        inputNodes: baseNodes.length,
-        preferredEndpoints: endpoints.length,
-        outputNodes: nodes.length,
-      },
-      preview: nodes.slice(0, 20).map(n => ({
-        name: n.name,
-        type: n.type,
-        server: n.server,
-        port: n.port,
-        host: n.host || '',
-        sni: n.sni || '',
-      })),
-      warnings: !token ? ['未设置 SUB_ACCESS_TOKEN，订阅链接无保护'] : [],
+      ok: true, shortId: id,
+      urls: { auto: t(''), raw: t('raw'), clash: t('clash'), surge: t('surge') },
+      counts: { inputNodes: baseNodes.length, preferredEndpoints: endpoints.length, outputNodes: nodes.length },
+      preview: nodes.slice(0, 20).map(n => ({ name: n.name, type: n.type, server: n.server, port: n.port, host: n.host || '', sni: n.sni || '' })),
+      warnings,
     });
   } catch (err) {
     console.error(err);
@@ -403,14 +315,12 @@ async function handleGenerate(request, env, url) {
   }
 }
 
-// ========== 订阅访问 ==========
 function validateToken(url, env) {
   const expected = env.SUB_ACCESS_TOKEN;
   if (!expected) return true;
   const provided = url.searchParams.get('token') || '';
   return provided === expected;
 }
-
 async function handleSub(url, env) {
   if (!validateToken(url, env)) return text('Forbidden', 403);
   const id = url.pathname.split('/').pop();
@@ -424,18 +334,10 @@ async function handleSub(url, env) {
   return text(renderRaw(nodes), 200);
 }
 
-// ========== 入口 ==========
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'access-control-allow-origin': '*',
-          'access-control-allow-methods': 'GET,POST,OPTIONS',
-        },
-      });
-    }
+    if (request.method === 'OPTIONS') return new Response(null, { headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS' } });
     if (request.method === 'POST' && url.pathname === '/api/generate') return handleGenerate(request, env, url);
     if (request.method === 'GET' && url.pathname.startsWith('/sub/')) return handleSub(url, env);
     return env.ASSETS.fetch(request);
