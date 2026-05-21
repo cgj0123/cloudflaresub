@@ -17,6 +17,9 @@
 // Cloudflare Worker: 优选IP订阅生成器（智能回退 + 自动DNS解析）
 // 支持 vmess, vless, trojan, hysteria2, shadowsocks
 
+// Cloudflare Worker: 优选IP订阅生成器（智能检测 CDN + 强制回退）
+// 支持 vmess, vless, trojan, hysteria2, shadowsocks
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -260,7 +263,7 @@ async function buildDedupHash(body) {
   }));
 }
 
-// ---------- 核心 API（智能回退） ----------
+// ---------- 核心 API（智能检测 CDN 并强制回退） ----------
 async function handleGenerate(request, env, url) {
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: 'JSON 无效' }, 400); }
@@ -269,29 +272,48 @@ async function handleGenerate(request, env, url) {
     let baseNodes = parseRawLinks(body.nodeLinks || '');
     if (!baseNodes.length) throw new Error('没有识别到可用节点');
 
-    let preferredIpsText = (body.preferredIps || '').trim();
-    let endpoints = parsePreferredEndpoints(preferredIpsText);
-    let autoResolved = false;
+    // 获取原始节点的原始域名（第一个节点）
+    const firstNode = baseNodes[0];
+    const domain = firstNode.originalServer || firstNode.server;
+    let endpoints = [];
     const warnings = [];
+    let forceFallbackToDomain = false;
 
-    // 智能回退：如果用户没有提供 IP 或提供的列表无效，则自动处理
-    if (endpoints.length === 0 && baseNodes.length > 0) {
-      const firstNode = baseNodes[0];
-      const domain = firstNode.originalServer || firstNode.server;
-      if (domain) {
-        const ips = await resolveDomainToIPs(domain);
-        if (ips.length === 1) {
-          // 只解析出一个 IP，说明未使用 CDN，回退使用域名
-          warnings.push(`域名 ${domain} 仅解析到单一 IP (${ips[0]})，疑似未使用 CDN。已自动使用原始域名代替 IP 替换，以确保连通性。`);
-          endpoints = [{ server: domain, port: undefined, remark: 'original' }];
-        } else if (ips.length > 1) {
-          endpoints = ips.map(ip => ({ server: ip, port: undefined, remark: 'auto' }));
-          autoResolved = true;
-          warnings.push(`已自动从域名 ${domain} 解析出 ${ips.length} 个优选 IP，如部分无法使用请手动测试。`);
-        } else {
-          endpoints = [{ server: domain, port: undefined, remark: 'fallback' }];
-          warnings.push(`DNS 解析失败，已回退使用原始域名。`);
-        }
+    // 解析域名的 IP 列表，判断是否启用 CDN
+    let ips = [];
+    if (domain) {
+      ips = await resolveDomainToIPs(domain);
+      if (ips.length === 1) {
+        // 只解析出一个 IP，说明未使用 CDN
+        forceFallbackToDomain = true;
+        warnings.push(`⚠️ 检测到域名 ${domain} 仅解析到单一 IP (${ips[0]})，未启用 CDN。任何其他 IP 替换都会导致连接失败，已自动使用原始域名。`);
+      }
+    }
+
+    // 处理用户提供的优选 IP（如果有）
+    const userProvidedIpsText = (body.preferredIps || '').trim();
+    if (userProvidedIpsText) {
+      if (forceFallbackToDomain) {
+        // 强制忽略用户填写的 IP，使用原始域名
+        endpoints = [{ server: domain, port: undefined, remark: 'original(CDN未启用)' }];
+        warnings.push(`您填写了优选 IP，但由于节点未使用 CDN，系统已忽略您填写的 IP，改用原始域名以确保节点可用。`);
+      } else {
+        endpoints = parsePreferredEndpoints(userProvidedIpsText);
+        if (endpoints.length === 0) throw new Error('您填写的优选地址无效');
+      }
+    } else {
+      // 用户未提供优选 IP，自动处理
+      if (forceFallbackToDomain) {
+        endpoints = [{ server: domain, port: undefined, remark: 'original' }];
+      } else if (ips.length > 1) {
+        endpoints = ips.map(ip => ({ server: ip, port: undefined, remark: 'auto' }));
+        warnings.push(`已自动从域名 ${domain} 解析出 ${ips.length} 个优选 IP，如果部分无法使用请手动测试。`);
+      } else if (ips.length === 1) {
+        endpoints = [{ server: domain, port: undefined, remark: 'original' }];
+        warnings.push(`域名 ${domain} 仅解析到单一 IP，未使用 CDN，已自动使用原始域名。`);
+      } else {
+        endpoints = [{ server: domain, port: undefined, remark: 'fallback' }];
+        warnings.push(`DNS 解析失败，已回退使用原始域名。`);
       }
     }
 
