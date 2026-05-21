@@ -1,4 +1,4 @@
-// app.js - 无语法错误版本
+// app.js - 无语法错误，支持所有协议
 (function() {
   const form = document.getElementById('generator-form');
   const submitBtn = document.getElementById('submitBtn');
@@ -18,6 +18,7 @@
   const qrText = document.getElementById('qrText');
   const closeQrModal = document.getElementById('closeQrModal');
 
+  // 演示数据（包含 vmess, hysteria2, ss）
   const demoVmess = `vmess://ewogICJ2IjogIjIiLAogICJwcyI6ICJkZW1vLXdzLXRscyIsCiAgImFkZCI6ICJlZGdlLmV4YW1wbGUuY29tIiwKICAicG9ydCI6ICI0NDMiLAogICJpZCI6ICIwMDAwMDAwMC0wMDAwLTQwMDAtODAwMC0wMDAwMDAwMDAwMDEiLAogICJzY3kiOiAiYXV0byIsCiAgIm5ldCI6ICJ3cyIsCiAgInRscyI6ICJ0bHMiLAogICJwYXRoIjogIi93cyIsCiAgImhvc3QiOiAiZWRnZS5leGFtcGxlLmNvbSIsCiAgInNuaSI6ICJlZGdlLmV4YW1wbGUuY29tIgp9CgpoeXN0ZXJpYTI6Ly8xMjM0NTpAbXlwYXNzd29yZEBleGFtcGxlLmNvbTo0NDM/c25pPWV4YW1wbGUuY29tJmluc2VjdXJlPTEjSFlJMi1UZXN0CnNzOi8vWVd4dllYUnpJamx0WTJ4cGJtY2dhRzkwY2lCaFoyVWdlWEJsSUdGa2JXbHVaejVqYjIwPSNAVGVzdFNTCg==`;
   const demoIps = `104.16.1.2#HK-01\n104.17.2.3#HK-02\n104.18.3.4:2053#US-Edge`;
 
@@ -37,7 +38,7 @@
       nodeLinks: document.getElementById('nodeLinks').value,
       preferredIps: document.getElementById('preferredIps').value,
       namePrefix: document.getElementById('namePrefix').value,
-      keepOriginalHost: document.getElementById('keepOriginalHost').checked,
+      keepOriginalHost: document.getElementById('keepOriginalHost').checked
     };
 
     submitBtn.disabled = true;
@@ -47,7 +48,7 @@
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(payload)
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || '生成失败');
